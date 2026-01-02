@@ -110,7 +110,26 @@ class EngineRegistry:
 # Import engines to trigger registration
 def _load_engines() -> None:
     """Load all engine modules to trigger registration."""
+    # Monoalphabetic ciphers
     from app.services.engines.monoalphabetic import caesar  # noqa: F401
+    from app.services.engines.monoalphabetic import rot13  # noqa: F401
+    from app.services.engines.monoalphabetic import atbash  # noqa: F401
+    from app.services.engines.monoalphabetic import affine  # noqa: F401
+    from app.services.engines.monoalphabetic import simple_substitution  # noqa: F401
+
+    # Polyalphabetic ciphers
+    from app.services.engines.polyalphabetic import vigenere  # noqa: F401
+    from app.services.engines.polyalphabetic import beaufort  # noqa: F401
+    from app.services.engines.polyalphabetic import autokey  # noqa: F401
+
+    # Transposition ciphers
+    from app.services.engines.transposition import rail_fence  # noqa: F401
+    from app.services.engines.transposition import columnar  # noqa: F401
+
+    # Polygraphic ciphers
+    from app.services.engines.polygraphic import playfair  # noqa: F401
+    from app.services.engines.polygraphic import hill  # noqa: F401
+    from app.services.engines.polygraphic import four_square  # noqa: F401
 
 
 # Load engines when module is imported
