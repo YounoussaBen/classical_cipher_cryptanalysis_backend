@@ -159,6 +159,10 @@ class DecryptResponse(BaseModel):
     confidence: float
     key_used: str | dict[str, Any]
     explanation: str
+    # AI-enhanced fields (optional, populated when AI formatting is enabled)
+    formatted_plaintext: str | None = None
+    detected_language: str | None = None
+    language_confidence: float | None = None
 
 
 class EncryptResponse(BaseModel):

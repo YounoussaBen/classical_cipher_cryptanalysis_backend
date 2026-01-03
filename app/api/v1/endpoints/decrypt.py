@@ -4,6 +4,7 @@ from app.dependencies import SettingsDep
 from app.models.schemas import DecryptRequest, DecryptResponse, ErrorResponse
 from app.services.engines.registry import EngineRegistry
 from app.services.preprocessing.normalizer import TextNormalizer
+from app.services.ai.gemini_client import GeminiClient
 
 router = APIRouter()
 
@@ -57,11 +58,32 @@ async def decrypt_ciphertext(
         else:
             result = engine.find_key_and_decrypt(normalized, request.options)
 
+        # AI-enhanced formatting (if enabled)
+        formatted_plaintext = None
+        detected_language = None
+        language_confidence = None
+
+        if settings.enable_ai_formatting and len(result.plaintext) > 5:
+            try:
+                gemini = GeminiClient(settings.GEMINI_API_KEY, settings.gemini_model)
+                ai_result = await gemini.detect_language_and_format(result.plaintext)
+                await gemini.close()
+
+                formatted_plaintext = ai_result.get("formatted_text")
+                detected_language = ai_result.get("language")
+                language_confidence = ai_result.get("confidence")
+            except Exception:
+                # AI formatting is optional, don't fail if it errors
+                pass
+
         return DecryptResponse(
             plaintext=result.plaintext,
             confidence=result.confidence,
             key_used=result.key,
             explanation=result.explanation,
+            formatted_plaintext=formatted_plaintext,
+            detected_language=detected_language,
+            language_confidence=language_confidence,
         )
 
     except ValueError as e:

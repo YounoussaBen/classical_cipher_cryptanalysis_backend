@@ -5,7 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """
+    Application settings loaded from environment variables / .env file.
+
+    All settings are loaded from the .env file. No hardcoded defaults.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -14,22 +18,27 @@ class Settings(BaseSettings):
     )
 
     # Application
-    app_name: str = "Cryptanalysis Platform"
-    app_env: Literal["development", "staging", "production"] = "development"
-    debug: bool = False
-    api_v1_prefix: str = "/api/v1"
+    app_name: str
+    app_env: Literal["development", "staging", "production"]
+    debug: bool
+    api_v1_prefix: str
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./cryptanalysis.db"
+    database_url: str
 
     # Security
-    secret_key: str = "change-me-in-production"
-    api_key_header: str = "X-API-Key"
+    secret_key: str
+    api_key_header: str
 
     # Analysis settings
-    max_ciphertext_length: int = 100_000
-    default_timeout_seconds: int = 30
-    max_parallel_engines: int = 4
+    max_ciphertext_length: int
+    default_timeout_seconds: int
+    max_parallel_engines: int
+
+    # AI Services (Gemini)
+    gemini_api_key: str
+    gemini_model: str
+    enable_ai_formatting: bool
 
     @property
     def is_development(self) -> bool:
@@ -38,6 +47,11 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def GEMINI_API_KEY(self) -> str:
+        """Alias for consistency."""
+        return self.gemini_api_key
 
 
 @lru_cache
