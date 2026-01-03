@@ -178,6 +178,90 @@ Return ONLY the formatted text, nothing else."""
         except Exception:
             return "Unknown"
 
+    async def evaluate_and_format_candidates(
+        self,
+        plaintext_candidates: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """
+        Evaluate plaintext candidates and identify the most sensible one.
+
+        The AI only receives the plaintext strings and their scores - it does NOT
+        see the ciphertext, keys, or algorithm details. Its job is purely to:
+        1. Identify which plaintext looks like real, coherent language
+        2. Format the best candidate for human readability
+
+        Args:
+            plaintext_candidates: List of dicts with 'plaintext', 'score', 'confidence'
+
+        Returns:
+            Dictionary with:
+            - best_index: Index of the best candidate (0-based)
+            - formatted_text: Human-readable version of the best candidate
+            - language: Detected language
+            - language_confidence: Confidence in language detection
+            - reasoning: Brief explanation of why this candidate was chosen
+        """
+        if not plaintext_candidates:
+            return {
+                "best_index": None,
+                "formatted_text": None,
+                "language": None,
+                "language_confidence": None,
+                "reasoning": "No candidates provided",
+            }
+
+        # Only send plaintext strings to AI - no keys, algorithms, or ciphertext
+        candidates_text = "\n".join(
+            f"Candidate {i + 1}: {c.get('plaintext', '')[:200]}"
+            for i, c in enumerate(plaintext_candidates[:5])  # Max 5 candidates
+        )
+
+        prompt = f"""You are analyzing decrypted text candidates. Your ONLY job is to identify which text looks like real, coherent language (not gibberish).
+
+Here are the plaintext candidates:
+{candidates_text}
+
+Analyze each candidate and determine:
+1. Which one appears to be real, coherent text in a natural language
+2. What language it is written in
+3. Rewrite the best candidate with proper spacing, punctuation, and capitalization
+
+Respond in this exact JSON format (no markdown, just raw JSON):
+{{"best_index": 1, "language": "French", "language_confidence": 0.95, "formatted_text": "The properly formatted text here", "reasoning": "Brief explanation"}}
+
+Important rules:
+- best_index is 1-based (1 for first candidate, 2 for second, etc.)
+- If NO candidate looks like real language, set best_index to null and explain why
+- Only format the text - do not add, remove, or change any words
+- If the text has accented characters missing (common in cryptanalysis), add them appropriately"""
+
+        try:
+            response = await self.generate_content(prompt)
+            import json
+
+            # Clean up response
+            response = response.strip()
+            if response.startswith("```"):
+                lines = response.split("\n")
+                response = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+
+            result = json.loads(response)
+            return {
+                "best_index": result.get("best_index"),
+                "formatted_text": result.get("formatted_text"),
+                "language": result.get("language"),
+                "language_confidence": result.get("language_confidence"),
+                "reasoning": result.get("reasoning"),
+            }
+        except Exception as e:
+            return {
+                "best_index": 0,  # Default to first candidate
+                "formatted_text": None,
+                "language": None,
+                "language_confidence": None,
+                "reasoning": f"AI evaluation failed: {str(e)}",
+            }
+
     async def enhance_explanation(
         self,
         cipher_type: str,

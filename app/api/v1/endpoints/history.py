@@ -112,7 +112,49 @@ async def get_analysis(
                 detail=f"Analysis with ID {analysis_id} not found",
             )
 
-        return AnalysisDetailResponse.model_validate(analysis)
+        # Construct the result field from stored data
+        decryption_result = None
+        if analysis.best_plaintext:
+            from app.models.schemas import CipherType, DecryptionResultSchema
+            
+            # Try to get cipher type, default to caesar if not stored
+            cipher_type = CipherType.CAESAR
+            if analysis.best_cipher_type:
+                try:
+                    cipher_type = CipherType(analysis.best_cipher_type)
+                except ValueError:
+                    pass
+            
+            decryption_result = DecryptionResultSchema(
+                plaintext=analysis.best_plaintext,
+                formatted_plaintext=analysis.best_formatted_plaintext,
+                cipher_type=cipher_type,
+                key=analysis.best_key or "",
+                detected_language=analysis.detected_language,
+                confidence=analysis.best_confidence or 0.0,
+                explanation=analysis.best_explanation,
+            )
+
+        return AnalysisDetailResponse(
+            id=analysis.id,
+            ciphertext_hash=analysis.ciphertext_hash,
+            ciphertext=analysis.ciphertext,
+            statistics=analysis.statistics,
+            classification=analysis.classification,
+            result=decryption_result,
+            visual_data=analysis.visual_data,
+            analysis_info=analysis.analysis_info,
+            detected_language=analysis.detected_language,
+            parameters_used=analysis.parameters_used,
+            created_at=analysis.created_at,
+            updated_at=analysis.updated_at,
+            # Legacy fields
+            suspected_ciphers=analysis.suspected_ciphers,
+            plaintext_candidates=analysis.plaintext_candidates,
+            best_plaintext=analysis.best_plaintext,
+            best_confidence=analysis.best_confidence,
+            explanations=analysis.explanations,
+        )
 
     except HTTPException:
         raise

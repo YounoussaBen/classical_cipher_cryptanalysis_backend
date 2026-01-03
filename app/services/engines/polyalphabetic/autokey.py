@@ -6,7 +6,6 @@ from app.models.schemas import CipherFamily, CipherType, PlaintextCandidate, Sta
 from app.services.analysis.statistics import StatisticalAnalyzer
 from app.services.engines.base import CipherEngine, DecryptionResult
 from app.services.engines.registry import EngineRegistry
-from app.services.optimization.scoring import LanguageScorer
 
 
 @EngineRegistry.register
@@ -63,9 +62,9 @@ class AutokeyEngine(CipherEngine):
         Attempt to break Autokey cipher.
 
         Try different primer lengths and use frequency analysis.
+        Scores candidates against multiple languages.
         """
         analyzer = StatisticalAnalyzer()
-        scorer = LanguageScorer()
         candidates = []
 
         filtered = "".join(c for c in ciphertext.upper() if c in self.ALPHABET)
@@ -76,7 +75,7 @@ class AutokeyEngine(CipherEngine):
         # Try common primers
         for primer in self.COMMON_PRIMERS:
             plaintext = self._decrypt(ciphertext, primer)
-            score = analyzer.english_score(plaintext)
+            best_lang, score = analyzer.best_language_score(plaintext)
             confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
             candidates.append(PlaintextCandidate(
@@ -85,17 +84,18 @@ class AutokeyEngine(CipherEngine):
                 confidence=confidence,
                 cipher_type=self.cipher_type,
                 key=primer,
-                method="dictionary",
+                method=f"dictionary_{best_lang}",
             ))
 
         # Try single-letter primers with frequency analysis
         max_primer_length = options.get("max_primer_length", 5)
+        target_language = options.get("language")
 
         for primer_len in range(1, max_primer_length + 1):
-            best_primer = self._find_primer(filtered, primer_len)
+            best_primer = self._find_primer(filtered, primer_len, target_language)
             if best_primer:
                 plaintext = self._decrypt(ciphertext, best_primer)
-                score = analyzer.english_score(plaintext)
+                best_lang, score = analyzer.best_language_score(plaintext)
                 confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
                 candidates.append(PlaintextCandidate(
@@ -104,7 +104,7 @@ class AutokeyEngine(CipherEngine):
                     confidence=confidence,
                     cipher_type=self.cipher_type,
                     key=best_primer,
-                    method="frequency_analysis",
+                    method=f"frequency_analysis_{best_lang}",
                 ))
 
         candidates.sort(key=lambda x: x.score)
@@ -200,26 +200,39 @@ class AutokeyEngine(CipherEngine):
             key = key.get("key", key.get("primer", ""))
         return str(key).upper()
 
-    def _find_primer(self, ciphertext: str, primer_length: int) -> str | None:
+    def _find_primer(
+        self,
+        ciphertext: str,
+        primer_length: int,
+        target_language: str | None = None,
+    ) -> str | None:
         """
         Find the best primer of given length using frequency analysis.
 
-        For each possible primer, decrypt and score.
+        For each possible primer, decrypt and score against the target language.
+
+        Args:
+            ciphertext: The ciphertext to analyze
+            primer_length: Length of primer to find
+            target_language: Target language or None for auto-detection
         """
+        from itertools import product
+        from app.services.analysis.statistics import StatisticalAnalyzer
+
+        analyzer = StatisticalAnalyzer()
         best_primer = None
         best_score = float("inf")
 
         # For short primers, try all combinations
         if primer_length <= 2:
-            from itertools import product
-
             for combo in product(self.ALPHABET, repeat=primer_length):
                 primer = "".join(combo)
                 plaintext = self._decrypt(ciphertext, primer)
 
-                from app.services.analysis.statistics import StatisticalAnalyzer
-                analyzer = StatisticalAnalyzer()
-                score = analyzer.english_score(plaintext)
+                if target_language:
+                    score = analyzer.language_score(plaintext, target_language)
+                else:
+                    _, score = analyzer.best_language_score(plaintext)
 
                 if score < best_score:
                     best_score = score
@@ -229,14 +242,14 @@ class AutokeyEngine(CipherEngine):
             # Try most common letters as primer characters
             common_letters = "ETAOINSHRDLU"
 
-            from itertools import product
             for combo in product(common_letters[:4], repeat=primer_length):
                 primer = "".join(combo)
                 plaintext = self._decrypt(ciphertext, primer)
 
-                from app.services.analysis.statistics import StatisticalAnalyzer
-                analyzer = StatisticalAnalyzer()
-                score = analyzer.english_score(plaintext)
+                if target_language:
+                    score = analyzer.language_score(plaintext, target_language)
+                else:
+                    _, score = analyzer.best_language_score(plaintext)
 
                 if score < best_score:
                     best_score = score

@@ -58,7 +58,6 @@ async def decrypt_ciphertext(
         else:
             result = engine.find_key_and_decrypt(normalized, request.options)
 
-        # AI-enhanced formatting (if enabled)
         formatted_plaintext = None
         detected_language = None
         language_confidence = None

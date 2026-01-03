@@ -7,7 +7,6 @@ from app.models.schemas import CipherFamily, CipherType, PlaintextCandidate, Sta
 from app.services.analysis.statistics import StatisticalAnalyzer
 from app.services.engines.base import CipherEngine, DecryptionResult
 from app.services.engines.registry import EngineRegistry
-from app.services.optimization.scoring import LanguageScorer
 
 
 @EngineRegistry.register
@@ -76,9 +75,9 @@ class VigenereEngine(CipherEngine):
 
         1. Estimate key length using Kasiski/IOC
         2. Break each Caesar cipher independently
+        3. Score candidates against multiple languages
         """
         analyzer = StatisticalAnalyzer()
-        scorer = LanguageScorer()
         candidates = []
 
         # Filter to letters only
@@ -87,15 +86,19 @@ class VigenereEngine(CipherEngine):
         if len(filtered) < 10:
             return []
 
+        # Get target language from options, or use auto-detection
+        target_language = options.get("language")
+
         # Try different key lengths
         max_key_length = options.get("max_key_length", 15)
         likely_lengths = self._estimate_key_lengths(filtered, statistics, max_key_length)
 
         for key_length in likely_lengths[:5]:  # Try top 5 candidates
-            key = self._find_key(filtered, key_length)
+            key = self._find_key(filtered, key_length, target_language)
             plaintext = self._decrypt(ciphertext, key)
 
-            score = analyzer.english_score(plaintext)
+            # Score against best matching language
+            best_lang, score = analyzer.best_language_score(plaintext)
             confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
             candidates.append(PlaintextCandidate(
@@ -104,13 +107,13 @@ class VigenereEngine(CipherEngine):
                 confidence=confidence,
                 cipher_type=self.cipher_type,
                 key=key,
-                method="kasiski_frequency",
+                method=f"kasiski_frequency_{best_lang}",
             ))
 
         # Also try common words as keys
         for word in self.COMMON_WORDS:
             plaintext = self._decrypt(ciphertext, word)
-            score = analyzer.english_score(plaintext)
+            best_lang, score = analyzer.best_language_score(plaintext)
             confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
             candidates.append(PlaintextCandidate(
@@ -119,7 +122,7 @@ class VigenereEngine(CipherEngine):
                 confidence=confidence,
                 cipher_type=self.cipher_type,
                 key=word,
-                method="dictionary",
+                method=f"dictionary_{best_lang}",
             ))
 
         # Sort by score and return best
@@ -296,13 +299,26 @@ class VigenereEngine(CipherEngine):
 
         return numerator / denominator if denominator > 0 else 0.0
 
-    def _find_key(self, ciphertext: str, key_length: int) -> str:
+    def _find_key(
+        self,
+        ciphertext: str,
+        key_length: int,
+        target_language: str | None = None,
+    ) -> str:
         """
         Find the key by breaking each Caesar cipher independently.
 
         For each position, try all 26 shifts and pick the one that
-        produces the most English-like distribution.
+        produces the best distribution for the target language.
+
+        Args:
+            ciphertext: The ciphertext to analyze
+            key_length: Expected key length
+            target_language: Target language ('english', 'french', etc.) or None for auto
         """
+        from app.services.analysis.statistics import StatisticalAnalyzer
+        analyzer = StatisticalAnalyzer()
+
         key = []
 
         for i in range(key_length):
@@ -320,10 +336,11 @@ class VigenereEngine(CipherEngine):
                     for c in column
                 )
 
-                # Score against English frequencies
-                from app.services.analysis.statistics import StatisticalAnalyzer
-                analyzer = StatisticalAnalyzer()
-                score = analyzer.english_score(decrypted)
+                # Score against target language or find best language
+                if target_language:
+                    score = analyzer.language_score(decrypted, target_language)
+                else:
+                    _, score = analyzer.best_language_score(decrypted)
 
                 if score < best_score:
                     best_score = score

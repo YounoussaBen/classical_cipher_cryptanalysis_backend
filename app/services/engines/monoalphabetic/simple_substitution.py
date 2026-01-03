@@ -7,7 +7,7 @@ from app.services.analysis.statistics import StatisticalAnalyzer
 from app.services.engines.base import CipherEngine, DecryptionResult
 from app.services.engines.registry import EngineRegistry
 from app.services.optimization.hill_climbing import SubstitutionHillClimber
-from app.services.optimization.scoring import LanguageScorer
+from app.services.optimization.scoring import LanguageScorer, MultiLanguageScorer
 
 
 @EngineRegistry.register
@@ -64,37 +64,64 @@ class SimpleSubstitutionEngine(CipherEngine):
     ) -> list[PlaintextCandidate]:
         """
         Use hill-climbing to find the best substitution key.
+
+        Now uses multi-language scoring based on IoC to detect French, German,
+        Spanish, and English texts properly.
         """
-        scorer = LanguageScorer()
+        # Use IoC to determine likely languages
+        ioc = statistics.index_of_coincidence
+        likely_languages = LanguageScorer.detect_likely_language_from_ioc(ioc)
+
+        # Get language preference from options, or use auto-detection
+        target_language = options.get("language")
+        if target_language and target_language.lower() in LanguageScorer.LANGUAGE_PROFILES:
+            likely_languages = [target_language.lower()]
 
         # Configure hill climber
         max_iterations = options.get("max_iterations", 5000)
         restarts = options.get("restarts", 10)
 
-        climber = SubstitutionHillClimber(
-            ciphertext=ciphertext,
-            fitness_fn=scorer.fitness,
-            max_iterations=max_iterations,
-            restarts=restarts,
-        )
+        candidates = []
 
-        result = climber.optimize()
+        # Try top 2 most likely languages (or just 1 if specified)
+        languages_to_try = likely_languages[:2] if len(likely_languages) > 1 else likely_languages
 
-        if result.best_key is None:
-            return []
+        for lang in languages_to_try:
+            scorer = LanguageScorer(lang)
 
-        plaintext = self._decrypt(ciphertext, result.best_key)
-        score = scorer.chi_squared_score(plaintext)
-        confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
+            climber = SubstitutionHillClimber(
+                ciphertext=ciphertext,
+                fitness_fn=scorer.fitness,
+                max_iterations=max_iterations,
+                restarts=restarts,
+            )
 
-        return [PlaintextCandidate(
-            plaintext=plaintext,
-            score=score,
-            confidence=confidence,
-            cipher_type=self.cipher_type,
-            key=result.best_key,
-            method="hill_climbing",
-        )]
+            result = climber.optimize()
+
+            if result.best_key is None:
+                continue
+
+            plaintext = self._decrypt(ciphertext, result.best_key)
+
+            # Score against all languages to find the best match
+            multi_scorer = MultiLanguageScorer()
+            lang_result = multi_scorer.score_with_language_detection(plaintext)
+
+            score = lang_result["chi_squared"]
+            confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
+
+            candidates.append(PlaintextCandidate(
+                plaintext=plaintext,
+                score=score,
+                confidence=confidence,
+                cipher_type=self.cipher_type,
+                key=result.best_key,
+                method=f"hill_climbing_{lang_result['best_language']}",
+            ))
+
+        # Sort by score (lower is better) and return best candidates
+        candidates.sort(key=lambda x: x.score)
+        return candidates[:3]  # Return top 3
 
     def decrypt_with_key(
         self,

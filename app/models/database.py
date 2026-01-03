@@ -22,15 +22,28 @@ class Analysis(Base):
 
     # Analysis profile
     statistics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    detected_language: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    # Cipher detection results
+    # Classification result (new)
+    classification: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Cipher detection results (legacy, kept for backward compatibility)
     suspected_ciphers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
 
     # Decryption results
     plaintext_candidates: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     best_plaintext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    best_formatted_plaintext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    best_cipher_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    best_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     best_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    best_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Visual data for frontend
+    visual_data: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Analysis info (performance metrics)
+    analysis_info: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Metadata
     parameters_used: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

@@ -8,20 +8,53 @@ from app.models.schemas import CipherFamily, CipherHypothesis, CipherType, Stati
 class DetectionThresholds:
     """Thresholds for cipher family detection."""
 
-    # Index of Coincidence thresholds
-    ioc_english: float = 0.0667  # Expected IOC for English
+    # Index of Coincidence thresholds per language
+    ioc_languages: dict = None  # Initialized in __post_init__
     ioc_random: float = 0.0385   # Expected IOC for random (1/26)
     ioc_high: float = 0.060     # Above this: likely monoalphabetic
     ioc_mid: float = 0.045      # Between mid and high: unclear
     ioc_low: float = 0.040      # Below this: likely polyalphabetic or random
 
     # Entropy thresholds (for 26-letter alphabet)
-    entropy_english: float = 4.1  # Typical English
+    entropy_natural: float = 4.1  # Typical natural language
     entropy_max: float = 4.7      # Max (log2(26))
 
-    # Chi-squared thresholds against English
-    chi_good: float = 50.0       # Good match to English
+    # Chi-squared thresholds
+    chi_good: float = 50.0       # Good match to expected language
     chi_moderate: float = 200.0  # Moderate match
+
+    def __post_init__(self):
+        if self.ioc_languages is None:
+            self.ioc_languages = {
+                "french": 0.0778,
+                "spanish": 0.0775,
+                "german": 0.0762,
+                "italian": 0.0738,
+                "portuguese": 0.0745,
+                "english": 0.0667,
+            }
+
+    def detect_likely_language(self, ioc: float) -> tuple[str, float]:
+        """
+        Detect the most likely language based on observed IoC.
+
+        Returns:
+            Tuple of (language_name, expected_ioc)
+        """
+        if ioc < self.ioc_mid:
+            # Low IoC suggests polyalphabetic - can't determine language
+            return "natural language", 0.0667
+
+        best_lang = "english"
+        best_distance = float("inf")
+
+        for lang, expected_ioc in self.ioc_languages.items():
+            distance = abs(ioc - expected_ioc)
+            if distance < best_distance:
+                best_distance = distance
+                best_lang = lang
+
+        return best_lang.capitalize(), self.ioc_languages.get(best_lang.lower(), 0.0667)
 
 
 class CipherDetector:
@@ -116,10 +149,13 @@ class CipherDetector:
         base_confidence = family_analysis["monoalphabetic"]
         ioc = statistics.index_of_coincidence
 
+        # Detect likely language from IoC
+        likely_lang, expected_ioc = self.THRESHOLDS.detect_likely_language(ioc)
+
         # Caesar cipher is always a possibility
         # It's the simplest and most common
         caesar_reasoning = [
-            f"IOC ({ioc:.4f}) close to English ({self.THRESHOLDS.ioc_english:.4f})",
+            f"IOC ({ioc:.4f}) close to {likely_lang} ({expected_ioc:.4f})",
             "Monoalphabetic substitution preserves letter frequencies",
             "Caesar is the simplest monoalphabetic cipher",
         ]
@@ -142,6 +178,7 @@ class CipherDetector:
         # General substitution cipher
         subst_reasoning = [
             f"IOC ({ioc:.4f}) indicates monoalphabetic substitution",
+            f"Likely language: {likely_lang} (based on IoC match)",
             "Could be more complex than Caesar (random permutation)",
         ]
 
@@ -180,7 +217,7 @@ class CipherDetector:
 
         # Vigenère is the most common polyalphabetic cipher
         vigenere_reasoning = [
-            f"IOC ({ioc:.4f}) lower than English, suggesting multiple alphabets",
+            f"IOC ({ioc:.4f}) lower than natural language, suggesting multiple alphabets",
             "Vigenère uses a keyword to shift each letter differently",
         ]
 
@@ -229,8 +266,11 @@ class CipherDetector:
         base_confidence = family_analysis["transposition"]
         ioc = statistics.index_of_coincidence
 
+        # Detect likely language from IoC
+        likely_lang, expected_ioc = self.THRESHOLDS.detect_likely_language(ioc)
+
         # Transposition preserves letter frequencies exactly
-        # So IOC should be very close to English
+        # So IOC should be very close to the original language
         if ioc > 0.065:
             base_confidence = min(0.9, base_confidence + 0.2)
 
@@ -240,7 +280,7 @@ class CipherDetector:
             cipher_type=CipherType.COLUMNAR,
             confidence=base_confidence * 0.6,
             reasoning=[
-                f"IOC ({ioc:.4f}) matches English (letters rearranged, not substituted)",
+                f"IOC ({ioc:.4f}) matches {likely_lang} (letters rearranged, not substituted)",
                 "Columnar transposition writes text in rows, reads in columns",
             ],
         ))

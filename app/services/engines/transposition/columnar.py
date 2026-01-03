@@ -6,7 +6,6 @@ from app.models.schemas import CipherFamily, CipherType, PlaintextCandidate, Sta
 from app.services.analysis.statistics import StatisticalAnalyzer
 from app.services.engines.base import CipherEngine, DecryptionResult
 from app.services.engines.registry import EngineRegistry
-from app.services.optimization.scoring import LanguageScorer
 
 
 @EngineRegistry.register
@@ -69,9 +68,9 @@ class ColumnarEngine(CipherEngine):
     ) -> list[PlaintextCandidate]:
         """
         Try different key lengths and orderings.
+        Scores candidates against multiple languages.
         """
         analyzer = StatisticalAnalyzer()
-        scorer = LanguageScorer()
         candidates = []
 
         filtered = "".join(c for c in ciphertext.upper() if c in self.ALPHABET)
@@ -80,10 +79,12 @@ class ColumnarEngine(CipherEngine):
         if n < 4:
             return []
 
+        target_language = options.get("language")
+
         # Try common keywords
         for keyword in self.COMMON_KEYS:
             plaintext = self._decrypt(ciphertext, keyword)
-            score = analyzer.english_score(plaintext)
+            best_lang, score = analyzer.best_language_score(plaintext)
             confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
             candidates.append(PlaintextCandidate(
@@ -92,7 +93,7 @@ class ColumnarEngine(CipherEngine):
                 confidence=confidence,
                 cipher_type=self.cipher_type,
                 key=keyword,
-                method="dictionary",
+                method=f"dictionary_{best_lang}",
             ))
 
         # Try numeric keys (column orderings) for different key lengths
@@ -100,10 +101,10 @@ class ColumnarEngine(CipherEngine):
 
         for key_length in range(2, max_key_length + 1):
             # Try to find best ordering using frequency analysis
-            best_key = self._find_best_ordering(filtered, key_length)
+            best_key = self._find_best_ordering(filtered, key_length, target_language)
             if best_key:
                 plaintext = self._decrypt_with_order(ciphertext, best_key)
-                score = analyzer.english_score(plaintext)
+                best_lang, score = analyzer.best_language_score(plaintext)
                 confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
                 candidates.append(PlaintextCandidate(
@@ -112,7 +113,7 @@ class ColumnarEngine(CipherEngine):
                     confidence=confidence,
                     cipher_type=self.cipher_type,
                     key=",".join(map(str, best_key)),
-                    method="frequency_analysis",
+                    method=f"frequency_analysis_{best_lang}",
                 ))
 
         candidates.sort(key=lambda x: x.score)
@@ -249,17 +250,28 @@ class ColumnarEngine(CipherEngine):
             positions[o - 1] = i  # o is 1-indexed
         return positions
 
-    def _find_best_ordering(self, ciphertext: str, key_length: int) -> list[int] | None:
+    def _find_best_ordering(
+        self,
+        ciphertext: str,
+        key_length: int,
+        target_language: str | None = None,
+    ) -> list[int] | None:
         """
         Find the best column ordering using a greedy approach.
 
         This is a simplified heuristic - full solution would require
         trying all permutations or using more sophisticated optimization.
+
+        Args:
+            ciphertext: The ciphertext to analyze
+            key_length: Expected key length
+            target_language: Target language or None for auto-detection
         """
         from itertools import permutations
+        from app.services.analysis.statistics import StatisticalAnalyzer
 
+        analyzer = StatisticalAnalyzer()
         n = len(ciphertext)
-        num_rows = (n + key_length - 1) // key_length
 
         # For small key lengths, try all permutations
         if key_length <= 6:
@@ -270,9 +282,10 @@ class ColumnarEngine(CipherEngine):
                 order = list(perm)
                 plaintext = self._decrypt_with_order(ciphertext, order)
 
-                from app.services.analysis.statistics import StatisticalAnalyzer
-                analyzer = StatisticalAnalyzer()
-                score = analyzer.english_score(plaintext)
+                if target_language:
+                    score = analyzer.language_score(plaintext, target_language)
+                else:
+                    _, score = analyzer.best_language_score(plaintext)
 
                 if score < best_score:
                     best_score = score
@@ -290,9 +303,10 @@ class ColumnarEngine(CipherEngine):
 
             plaintext = self._decrypt_with_order(ciphertext, order)
 
-            from app.services.analysis.statistics import StatisticalAnalyzer
-            analyzer = StatisticalAnalyzer()
-            score = analyzer.english_score(plaintext)
+            if target_language:
+                score = analyzer.language_score(plaintext, target_language)
+            else:
+                _, score = analyzer.best_language_score(plaintext)
 
             if score < best_score:
                 best_score = score

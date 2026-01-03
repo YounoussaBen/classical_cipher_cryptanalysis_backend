@@ -9,10 +9,38 @@ class ExplanationGenerator:
     No hallucination - every claim references data.
     """
 
-    # Reference values for comparisons
-    ENGLISH_IOC = 0.0667
+    # Reference IOC values for different languages
+    LANGUAGE_IOC = {
+        "French": 0.0778,
+        "Spanish": 0.0775,
+        "German": 0.0762,
+        "Italian": 0.0738,
+        "Portuguese": 0.0745,
+        "English": 0.0667,
+    }
     RANDOM_IOC = 0.0385
-    ENGLISH_ENTROPY = 4.1
+    NATURAL_ENTROPY = 4.1
+
+    def _detect_likely_language(self, ioc: float) -> tuple[str, float]:
+        """
+        Detect the most likely language based on observed IoC.
+
+        Returns:
+            Tuple of (language_name, expected_ioc)
+        """
+        if ioc < 0.05:
+            return "natural language", 0.0667
+
+        best_lang = "English"
+        best_distance = float("inf")
+
+        for lang, expected_ioc in self.LANGUAGE_IOC.items():
+            distance = abs(ioc - expected_ioc)
+            if distance < best_distance:
+                best_distance = distance
+                best_lang = lang
+
+        return best_lang, self.LANGUAGE_IOC.get(best_lang, 0.0667)
 
     def generate(
         self,
@@ -73,7 +101,7 @@ class ExplanationGenerator:
         if statistics.chi_squared is not None:
             chi_explanation = self._interpret_chi_squared(statistics.chi_squared)
             explanations.append(
-                f"Chi-squared against English: {statistics.chi_squared:.1f}. {chi_explanation}"
+                f"Chi-squared (frequency deviation): {statistics.chi_squared:.1f}. {chi_explanation}"
             )
 
         # Top frequencies
@@ -99,13 +127,15 @@ class ExplanationGenerator:
     def _interpret_ioc(self, ioc: float) -> str:
         """Interpret the Index of Coincidence value."""
         if ioc >= 0.065:
+            # Detect which language this is closest to
+            likely_lang, expected_ioc = self._detect_likely_language(ioc)
             return (
-                f"This is close to English ({self.ENGLISH_IOC:.4f}), "
+                f"This is close to {likely_lang} ({expected_ioc:.4f}), "
                 "suggesting monoalphabetic substitution or transposition."
             )
         elif ioc >= 0.050:
             return (
-                "This is between English and random, suggesting a "
+                "This is between natural language and random, suggesting a "
                 "polyalphabetic cipher with a short key, or mixed cipher."
             )
         elif ioc >= 0.040:
@@ -133,17 +163,17 @@ class ExplanationGenerator:
             return f"Near-maximum entropy ({max_entropy:.1f}) suggests high randomness."
 
     def _interpret_chi_squared(self, chi_sq: float) -> str:
-        """Interpret chi-squared against English."""
+        """Interpret chi-squared against expected language frequencies."""
         if chi_sq < 50:
-            return "Excellent match to English letter frequencies."
+            return "Excellent match to natural language letter frequencies."
         elif chi_sq < 100:
-            return "Good match to English, likely real text."
+            return "Good match to natural language, likely real text."
         elif chi_sq < 200:
-            return "Moderate deviation from English."
+            return "Moderate deviation from expected letter frequencies."
         elif chi_sq < 400:
-            return "Significant deviation, possibly encrypted or non-English."
+            return "Significant deviation, possibly encrypted or different language."
         else:
-            return "Large deviation from English letter distribution."
+            return "Large deviation from expected letter distribution."
 
     def _explain_detection(
         self,
@@ -210,7 +240,7 @@ class ExplanationGenerator:
 
         # Explain scoring
         explanations.append(
-            f"  Score: {best.score:.1f} (lower is better match to English)"
+            f"  Score: {best.score:.1f} (lower is better match to natural language)"
         )
 
         # Alternative candidates
@@ -242,7 +272,7 @@ class ExplanationGenerator:
         method_explanations = {
             "brute_force": (
                 "All possible keys were tried systematically, "
-                "and each result was scored against English language patterns."
+                "and each result was scored against natural language patterns."
             ),
             "hill_climbing": (
                 "Starting from a random key, the algorithm iteratively "
@@ -256,7 +286,7 @@ class ExplanationGenerator:
             ),
             "frequency_analysis": (
                 "Letter frequencies in the ciphertext were matched against "
-                "expected English frequencies to determine the key."
+                "expected language frequencies to determine the key."
             ),
             "kasiski": (
                 "Repeated sequences in the ciphertext revealed likely key "

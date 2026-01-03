@@ -15,21 +15,58 @@ class StatisticalAnalyzer:
     - Bigram/trigram frequencies
     - Index of Coincidence (IOC)
     - Entropy
-    - Chi-squared against English
+    - Chi-squared against multiple languages (English, French, German, Spanish)
     - Pattern detection (Kasiski examination)
     """
 
     ALPHABET: ClassVar[str] = string.ascii_uppercase
 
-    # English letter frequencies for chi-squared testing
-    ENGLISH_FREQ: ClassVar[dict[str, float]] = {
-        "E": 12.70, "T": 9.06, "A": 8.17, "O": 7.51, "I": 6.97,
-        "N": 6.75, "S": 6.33, "H": 6.09, "R": 5.99, "D": 4.25,
-        "L": 4.03, "C": 2.78, "U": 2.76, "M": 2.41, "W": 2.36,
-        "F": 2.23, "G": 2.02, "Y": 1.97, "P": 1.93, "B": 1.29,
-        "V": 0.98, "K": 0.77, "J": 0.15, "X": 0.15, "Q": 0.10,
-        "Z": 0.07,
+    # Multi-language letter frequencies for chi-squared testing
+    LANGUAGE_FREQUENCIES: ClassVar[dict[str, dict[str, float]]] = {
+        "english": {
+            "E": 12.70, "T": 9.06, "A": 8.17, "O": 7.51, "I": 6.97,
+            "N": 6.75, "S": 6.33, "H": 6.09, "R": 5.99, "D": 4.25,
+            "L": 4.03, "C": 2.78, "U": 2.76, "M": 2.41, "W": 2.36,
+            "F": 2.23, "G": 2.02, "Y": 1.97, "P": 1.93, "B": 1.29,
+            "V": 0.98, "K": 0.77, "J": 0.15, "X": 0.15, "Q": 0.10,
+            "Z": 0.07,
+        },
+        "french": {
+            "E": 14.72, "A": 7.64, "S": 7.95, "I": 7.53, "T": 7.24,
+            "N": 7.10, "R": 6.55, "U": 6.31, "L": 5.46, "O": 5.27,
+            "D": 3.67, "C": 3.18, "M": 2.97, "P": 2.52, "V": 1.83,
+            "Q": 1.36, "F": 1.07, "B": 0.90, "G": 0.87, "H": 0.74,
+            "J": 0.55, "X": 0.39, "Y": 0.31, "Z": 0.14, "W": 0.05,
+            "K": 0.05,
+        },
+        "german": {
+            "E": 16.40, "N": 9.78, "I": 7.55, "S": 7.27, "R": 7.00,
+            "A": 6.51, "T": 6.15, "D": 5.08, "H": 4.76, "U": 4.35,
+            "L": 3.44, "C": 3.06, "G": 3.01, "M": 2.53, "O": 2.51,
+            "B": 1.89, "W": 1.89, "F": 1.66, "K": 1.21, "Z": 1.13,
+            "P": 0.79, "V": 0.67, "J": 0.27, "Y": 0.04, "X": 0.03,
+            "Q": 0.02,
+        },
+        "spanish": {
+            "E": 13.68, "A": 12.53, "O": 8.68, "S": 7.98, "R": 6.87,
+            "N": 6.71, "I": 6.25, "D": 5.86, "L": 4.97, "C": 4.68,
+            "T": 4.63, "U": 3.93, "M": 3.16, "P": 2.51, "B": 1.42,
+            "G": 1.01, "V": 0.90, "Y": 0.90, "Q": 0.88, "H": 0.70,
+            "F": 0.69, "Z": 0.52, "J": 0.44, "X": 0.22, "W": 0.02,
+            "K": 0.01,
+        },
     }
+
+    # Expected IoC for each language
+    LANGUAGE_IOC: ClassVar[dict[str, float]] = {
+        "english": 0.0667,
+        "french": 0.0778,
+        "german": 0.0762,
+        "spanish": 0.0775,
+    }
+
+    # Backwards compatible alias
+    ENGLISH_FREQ: ClassVar[dict[str, float]] = LANGUAGE_FREQUENCIES["english"]
 
     def analyze(self, text: str) -> StatisticsProfile:
         """
@@ -163,22 +200,28 @@ class StatisticalAnalyzer:
 
         return entropy
 
-    def _chi_squared(self, text: str) -> float:
+    def _chi_squared(self, text: str, language: str = "english") -> float:
         """
-        Calculate chi-squared statistic against English frequencies.
+        Calculate chi-squared statistic against language frequencies.
 
-        Lower values indicate closer match to English.
+        Args:
+            text: Text to analyze
+            language: Language to compare against ('english', 'french', 'german', 'spanish')
+
+        Returns:
+            Chi-squared value. Lower values indicate closer match to the language.
         """
         n = len(text)
         if n == 0:
             return 0.0
 
+        frequencies = self.LANGUAGE_FREQUENCIES.get(language.lower(), self.ENGLISH_FREQ)
         counter = Counter(text)
         chi_squared = 0.0
 
         for letter in self.ALPHABET:
             observed = counter.get(letter, 0)
-            expected = (self.ENGLISH_FREQ.get(letter, 0) / 100) * n
+            expected = (frequencies.get(letter, 0.1) / 100) * n
 
             if expected > 0:
                 chi_squared += ((observed - expected) ** 2) / expected
@@ -262,4 +305,69 @@ class StatisticalAnalyzer:
         Lower score = better match to English.
         This is useful for ranking decryption candidates.
         """
-        return self._chi_squared(text)
+        return self._chi_squared(text, "english")
+
+    def language_score(self, text: str, language: str = "english") -> float:
+        """
+        Score text based on how well it matches a specific language's frequencies.
+
+        Args:
+            text: Text to score
+            language: Language to compare against ('english', 'french', 'german', 'spanish')
+
+        Returns:
+            Chi-squared score. Lower = better match to the language.
+        """
+        return self._chi_squared(text, language)
+
+    def best_language_score(self, text: str) -> tuple[str, float]:
+        """
+        Find the best matching language and its score.
+
+        Tries all supported languages and returns the one with the lowest
+        chi-squared score (best match).
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            Tuple of (language_name, chi_squared_score)
+        """
+        best_lang = "english"
+        best_score = float("inf")
+
+        for lang in self.LANGUAGE_FREQUENCIES:
+            score = self._chi_squared(text, lang)
+            if score < best_score:
+                best_score = score
+                best_lang = lang
+
+        return best_lang, best_score
+
+    def detect_language_from_ioc(self, ioc: float) -> list[str]:
+        """
+        Suggest likely languages based on observed IoC.
+
+        Higher IoC (0.07+) suggests French/Spanish/German.
+        Medium IoC (~0.067) suggests English.
+
+        Args:
+            ioc: Observed index of coincidence
+
+        Returns:
+            List of language codes ordered by likelihood
+        """
+        if ioc < 0.05:
+            # Likely polyalphabetic or random - return default
+            return ["english"]
+
+        # Calculate distance from each language's expected IoC
+        distances = []
+        for lang, expected_ioc in self.LANGUAGE_IOC.items():
+            distance = abs(ioc - expected_ioc)
+            distances.append((lang, distance))
+
+        # Sort by distance (closest first)
+        distances.sort(key=lambda x: x[1])
+
+        return [lang for lang, _ in distances]

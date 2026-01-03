@@ -140,16 +140,94 @@ class EncryptRequest(BaseModel):
 # ============================================================================
 
 
+class DecryptionResultSchema(BaseModel):
+    """The decryption result - the answer."""
+
+    plaintext: str = Field(description="Raw decrypted plaintext")
+    formatted_plaintext: str | None = Field(
+        None, description="Human-readable formatted version with spacing/punctuation"
+    )
+    cipher_type: CipherType = Field(description="The cipher type that was used")
+    key: str | dict[str, Any] = Field(description="The key used for decryption")
+    detected_language: str | None = Field(
+        None, description="Detected language of the plaintext"
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence in the decryption (0-1)"
+    )
+    explanation: str | None = Field(
+        None, description="Explanation of how the cipher was broken"
+    )
+
+
+class ClassificationResult(BaseModel):
+    """Cipher family classification result."""
+
+    monoalphabetic_probability: float = Field(
+        ge=0.0, le=1.0, description="Probability of monoalphabetic cipher"
+    )
+    polyalphabetic_probability: float = Field(
+        ge=0.0, le=1.0, description="Probability of polyalphabetic cipher"
+    )
+    transposition_probability: float = Field(
+        ge=0.0, le=1.0, description="Probability of transposition cipher"
+    )
+    classification_confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence in the classification"
+    )
+    reasoning: list[str] = Field(
+        default_factory=list, description="Reasoning for the classification"
+    )
+
+
 class AnalyzeResponse(BaseModel):
-    """Response schema for /analyze endpoint."""
+    """Response schema for /analyze endpoint - simplified black box output."""
 
     model_config = ConfigDict(from_attributes=True)
 
+    # Statistics for frontend visualization
     statistics: StatisticsProfile
-    suspected_ciphers: list[CipherHypothesis]
-    plaintext_candidates: list[PlaintextCandidate]
-    explanations: list[str]
+    
+    # Classification that guided the analysis
+    classification: ClassificationResult
+    
+    # THE answer - the decrypted result
+    result: DecryptionResultSchema | None = Field(
+        None, description="The decryption result, or None if decryption failed"
+    )
+    
+    # Visual data for frontend charts
     visual_data: dict[str, Any] = Field(default_factory=dict)
+    
+    # Performance/debug info (optional)
+    analysis_info: dict[str, Any] = Field(
+        default_factory=dict, 
+        description="Analysis metadata (candidates tried, early exit, etc.)"
+    )
+
+
+# Keep old schemas for backward compatibility but mark as deprecated
+class AIAnalysisResult(BaseModel):
+    """AI-enhanced analysis result for the best plaintext candidate.
+    
+    DEPRECATED: Use DecryptionResultSchema instead.
+    """
+
+    best_candidate_index: int | None = Field(
+        None, description="0-based index of the AI-selected best candidate"
+    )
+    formatted_plaintext: str | None = Field(
+        None, description="Human-readable formatted version of the best plaintext"
+    )
+    detected_language: str | None = Field(
+        None, description="Language detected in the plaintext"
+    )
+    language_confidence: float | None = Field(
+        None, ge=0.0, le=1.0, description="Confidence in language detection"
+    )
+    reasoning: str | None = Field(
+        None, description="Brief explanation of why this candidate was selected"
+    )
 
 
 class DecryptResponse(BaseModel):
@@ -159,7 +237,6 @@ class DecryptResponse(BaseModel):
     confidence: float
     key_used: str | dict[str, Any]
     explanation: str
-    # AI-enhanced fields (optional, populated when AI formatting is enabled)
     formatted_plaintext: str | None = None
     detected_language: str | None = None
     language_confidence: float | None = None
@@ -196,23 +273,43 @@ class HistoryResponse(BaseModel):
 
 
 class AnalysisDetailResponse(BaseModel):
-    """Full analysis detail response."""
+    """Full analysis detail response - matches AnalyzeResponse structure."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     ciphertext_hash: str
     ciphertext: str
+    
+    # Statistics for frontend visualization
     statistics: dict[str, Any]
-    detected_language: str | None
-    suspected_ciphers: list[dict[str, Any]]
-    plaintext_candidates: list[dict[str, Any]]
-    best_plaintext: str | None
-    best_confidence: float | None
-    parameters_used: dict[str, Any]
-    explanations: list[str]
+    
+    # Classification result
+    classification: dict[str, Any] | None = None
+    
+    # The decryption result
+    result: DecryptionResultSchema | None = None
+    
+    # Visual data for frontend charts
+    visual_data: dict[str, Any] | None = None
+    
+    # Analysis info (performance metrics)
+    analysis_info: dict[str, Any] | None = None
+    
+    # Metadata
+    detected_language: str | None = None
+    parameters_used: dict[str, Any] = Field(default_factory=dict)
+    
+    # Timestamps
     created_at: datetime
     updated_at: datetime
+    
+    # Legacy fields (kept for backward compatibility)
+    suspected_ciphers: list[dict[str, Any]] = Field(default_factory=list)
+    plaintext_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    best_plaintext: str | None = None
+    best_confidence: float | None = None
+    explanations: list[str] = Field(default_factory=list)
 
 
 # ============================================================================

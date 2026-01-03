@@ -38,7 +38,7 @@ class CaesarEngine(CipherEngine):
         """
         ioc = statistics.index_of_coincidence
 
-        # High IOC (close to English ~0.0667) suggests monoalphabetic
+        # High IOC (close to natural language ~0.065-0.078) suggests monoalphabetic
         if ioc > 0.06:
             # Could be Caesar or general substitution
             # Caesar is simplest, so give it moderate confidence
@@ -57,16 +57,18 @@ class CaesarEngine(CipherEngine):
     ) -> list[PlaintextCandidate]:
         """
         Try all 26 shifts and return scored candidates.
+        Scores against all supported languages to find the best match.
         """
         analyzer = StatisticalAnalyzer()
         candidates = []
 
         for shift in range(26):
             plaintext = self._decrypt(ciphertext, shift)
-            score = analyzer.english_score(plaintext)
+            # Score against all languages and find best match
+            best_lang, score = analyzer.best_language_score(plaintext)
 
             # Convert score to confidence (lower score = higher confidence)
-            # Typical English chi-squared is around 20-50
+            # Typical chi-squared for matching language is around 20-50
             confidence = max(0.0, min(1.0, 1.0 - (score / 500)))
 
             candidates.append(PlaintextCandidate(
@@ -75,7 +77,7 @@ class CaesarEngine(CipherEngine):
                 confidence=confidence,
                 cipher_type=self.cipher_type,
                 key=str(shift),
-                method="brute_force",
+                method=f"brute_force_{best_lang}",
             ))
 
         # Sort by score (ascending - lower is better)
