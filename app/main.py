@@ -1,23 +1,10 @@
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.db.session import init_db
 
 settings = get_settings()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Handle application startup and shutdown."""
-    # Startup
-    await init_db()
-    yield
-    # Shutdown
 
 
 def create_app() -> FastAPI:
@@ -33,7 +20,6 @@ def create_app() -> FastAPI:
         openapi_url=f"{settings.api_v1_prefix}/openapi.json",
         docs_url=f"{settings.api_v1_prefix}/docs",
         redoc_url=f"{settings.api_v1_prefix}/redoc",
-        lifespan=lifespan,
     )
 
     # CORS middleware

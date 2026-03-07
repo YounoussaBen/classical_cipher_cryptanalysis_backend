@@ -10,13 +10,11 @@ This endpoint implements the signal-driven cryptanalysis pipeline:
 6. Phase 5: Response assembly
 """
 
-import hashlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.dependencies import DbSessionDep, SettingsDep
-from app.models.database import Analysis
+from app.dependencies import SettingsDep
 from app.models.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -49,7 +47,6 @@ router = APIRouter()
 async def analyze_ciphertext(
     request: AnalyzeRequest,
     settings: SettingsDep,
-    db: DbSessionDep,
 ) -> AnalyzeResponse:
     """
     Analyze ciphertext and decrypt it.
@@ -166,46 +163,6 @@ async def analyze_ciphertext(
             "early_exit_reason": orchestration_result.early_exit_reason,
             "tiers_executed": orchestration_result.tiers_executed,
         }
-
-        # === Save to Database ===
-        ciphertext_hash = hashlib.sha256(request.ciphertext.encode()).hexdigest()
-        
-        analysis = Analysis(
-            ciphertext_hash=ciphertext_hash,
-            ciphertext=request.ciphertext,
-            statistics=statistics.model_dump(),
-            detected_language=result.detected_language if result else None,
-            # New classification field
-            classification=classification.model_dump(),
-            # Legacy field for backward compatibility
-            suspected_ciphers=[{
-                "family": "monoalphabetic" if classification.monoalphabetic_probability > 0.5 
-                         else "polyalphabetic" if classification.polyalphabetic_probability > 0.5
-                         else "transposition",
-                "confidence": classification.classification_confidence,
-            }],
-            plaintext_candidates=[{
-                "plaintext": c.plaintext[:200],
-                "cipher_type": c.cipher_type,
-                "key": str(c.key),
-                "score": c.best_score,
-                "language": c.best_language,
-            } for c in orchestration_result.candidates[:5]],
-            # Full result fields
-            best_plaintext=result.plaintext if result else None,
-            best_formatted_plaintext=result.formatted_plaintext if result else None,
-            best_cipher_type=result.cipher_type.value if result else None,
-            best_key=str(result.key) if result else None,
-            best_confidence=result.confidence if result else None,
-            best_explanation=result.explanation if result else None,
-            # Visual data and analysis info
-            visual_data=visual_data,
-            analysis_info=analysis_info,
-            parameters_used=request.options,
-            explanations=[result.explanation] if result and result.explanation else [],
-        )
-        db.add(analysis)
-        await db.commit()
 
         return AnalyzeResponse(
             statistics=statistics,

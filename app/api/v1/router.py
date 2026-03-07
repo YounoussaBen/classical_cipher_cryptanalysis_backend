@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import analyze, decrypt, encrypt, history
+from app.api.v1.endpoints import analyze, decrypt, encrypt
 
 api_router = APIRouter()
 
@@ -20,10 +20,4 @@ api_router.include_router(
     encrypt.router,
     prefix="/encrypt",
     tags=["Encryption"],
-)
-
-api_router.include_router(
-    history.router,
-    prefix="/history",
-    tags=["History"],
 )

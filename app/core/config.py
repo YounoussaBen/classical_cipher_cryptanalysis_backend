@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # Application
@@ -22,9 +23,6 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production"]
     debug: bool
     api_v1_prefix: str
-
-    # Database
-    database_url: str
 
     # Security
     secret_key: str

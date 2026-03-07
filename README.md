@@ -63,10 +63,8 @@ uv run pytest
 ## Tech Stack
 
 * **Framework**: FastAPI
-* **Database**: SQLite (async via aiosqlite)
-* **ORM**: SQLAlchemy 2.0 (async)
+* **Runtime**: Stateless request processing
 * **Validation**: Pydantic v2
-* **Migrations**: Alembic
 
 ## Development Commands
 

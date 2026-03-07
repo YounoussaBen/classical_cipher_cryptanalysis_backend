@@ -1,4 +1,3 @@
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -248,68 +247,6 @@ class EncryptResponse(BaseModel):
     ciphertext: str
     cipher_type: CipherType
     key_used: str | dict[str, Any]
-
-
-class AnalysisHistoryItem(BaseModel):
-    """Single history item."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    ciphertext_hash: str
-    ciphertext_preview: str
-    best_cipher: CipherType | None
-    best_confidence: float | None
-    created_at: datetime
-
-
-class HistoryResponse(BaseModel):
-    """Response schema for /history endpoint."""
-
-    items: list[AnalysisHistoryItem]
-    total: int
-    page: int
-    page_size: int
-
-
-class AnalysisDetailResponse(BaseModel):
-    """Full analysis detail response - matches AnalyzeResponse structure."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    ciphertext_hash: str
-    ciphertext: str
-    
-    # Statistics for frontend visualization
-    statistics: dict[str, Any]
-    
-    # Classification result
-    classification: dict[str, Any] | None = None
-    
-    # The decryption result
-    result: DecryptionResultSchema | None = None
-    
-    # Visual data for frontend charts
-    visual_data: dict[str, Any] | None = None
-    
-    # Analysis info (performance metrics)
-    analysis_info: dict[str, Any] | None = None
-    
-    # Metadata
-    detected_language: str | None = None
-    parameters_used: dict[str, Any] = Field(default_factory=dict)
-    
-    # Timestamps
-    created_at: datetime
-    updated_at: datetime
-    
-    # Legacy fields (kept for backward compatibility)
-    suspected_ciphers: list[dict[str, Any]] = Field(default_factory=list)
-    plaintext_candidates: list[dict[str, Any]] = Field(default_factory=list)
-    best_plaintext: str | None = None
-    best_confidence: float | None = None
-    explanations: list[str] = Field(default_factory=list)
 
 
 # ============================================================================
